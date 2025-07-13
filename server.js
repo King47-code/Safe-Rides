@@ -1,68 +1,72 @@
+require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
-const cors = require('cors');
-const dotenv = require('dotenv');
-const { Pool } = require('pg');
-
-dotenv.config();
-
+const axios = require('axios');
 const app = express();
-app.use(cors());
+const PORT = process.env.PORT || 3000;
+
+const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN || 'YOUR_MAPBOX_TOKEN_HERE';
+
 app.use(bodyParser.json());
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+function haversineDistance(coord1, coord2) {
+  const toRad = (val) => (val * Math.PI) / 180;
+  const [lon1, lat1] = coord1;
+  const [lon2, lat2] = coord2;
 
-// Root
-app.get('/', (req, res) => res.send('Safe Ride API is Live'));
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
 
-// Register User
-app.post('/api/register', async (req, res) => {
-  const { name, phone, role } = req.body;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+app.post('/api/rides/fare', async (req, res) => {
   try {
-    const result = await pool.query(
-      'INSERT INTO users (name, phone, role) VALUES ($1, $2, $3) RETURNING *',
-      [name, phone, role]
-    );
-    res.json(result.rows[0]);
+    const { pickup, dropoff } = req.body;
+
+    if (!pickup || !Array.isArray(pickup) || pickup.length !== 2) {
+      return res.status(400).json({ error: 'Invalid pickup coordinates' });
+    }
+
+    if (!dropoff || typeof dropoff !== 'string') {
+      return res.status(400).json({ error: 'Dropoff must be a valid address' });
+    }
+
+    const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(dropoff)}.json?access_token=${MAPBOX_TOKEN}&limit=1`;
+    const geoResponse = await axios.get(geoUrl);
+
+    if (!geoResponse.data.features.length) {
+      return res.status(404).json({ error: 'Dropoff address not found' });
+    }
+
+    const dropoffCoords = geoResponse.data.features[0].center;
+    const dropoffPlaceName = geoResponse.data.features[0].place_name;
+
+    const distance = haversineDistance(pickup, dropoffCoords);
+
+    const baseFare = 5;
+    const ratePerKm = 2;
+    const totalFare = parseFloat((baseFare + ratePerKm * distance).toFixed(2));
+
+    res.json({
+      message: 'Fare calculated successfully',
+      dropoff: dropoffPlaceName,
+      distance_km: `${distance.toFixed(2)} km`,
+      estimated_fare: `₵${totalFare.toFixed(2)}`
+    });
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error calculating fare:', err);
+    res.status(500).json({ error: 'Internal server error. Please try again.' });
   }
 });
 
-// Request Ride
-app.post('/api/rides/request', async (req, res) => {
-  const { rider_id, pickup_location, dropoff_location, fare } = req.body;
-  try {
-    const result = await pool.query(
-      `INSERT INTO rides (rider_id, pickup_location, dropoff_location, fare, status) 
-       VALUES ($1, $2, $3, $4, 'requested') RETURNING *`,
-      [rider_id, pickup_location, dropoff_location, fare]
-    );
-    res.json(result.rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Request Personal Driver
-app.post('/api/driver-hire/request', async (req, res) => {
-  const { user_id, driver_id, location, duration_days } = req.body;
-  try {
-    const result = await pool.query(
-      `INSERT INTO driver_hires (user_id, driver_id, location, duration_days, status, payment_status) 
-       VALUES ($1, $2, $3, $4, 'requested', 'pending') RETURNING *`,
-      [user_id, driver_id, location, duration_days]
-    );
-    res.json(result.rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log('Safe Ride API running on port ' + PORT);
+  console.log(`🚀 Safe Ride API is running on port ${PORT}`);
 });
