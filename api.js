@@ -1,39 +1,49 @@
+// src/api.js
 import axios from 'axios';
 
 const API_BASE = process.env.REACT_APP_API_BASE;
 const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
 
-export const checkConnection = () => 
-  axios.get(`${API_BASE}/health`);
+function getToken() {
+  const user = JSON.parse(localStorage.getItem('user'));
+  return user?.token || '';
+}
 
-export const login = (number, password) =>
-  axios.post(`${API_BASE}/api/login`, { phone, password });
+const authHeaders = () => ({
+  headers: { Authorization: `Bearer ${getToken()}` }
+});
 
 export const register = (name, phone, password, role) =>
   axios.post(`${API_BASE}/api/register`, { name, phone, password, role });
 
-export const calculateFare = async (pickup, dropoff) => {
-  // mapbox geocode dropoff address
-  const geo = await axios.get(
-    `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(dropoff)}.json?access_token=${MAPBOX_TOKEN}`
-  );
-  const coords = geo.data.features[0].center;
-  const resp = await axios.post(`${API_BASE}/api/rides/fare`, { pickup, dropoff: coords });
-  return resp.data;
-};
+export const login = (phone, password) =>
+  axios.post(`${API_BASE}/api/login`, { phone, password });
 
-export const requestRide = (pickup, dropoff, fare) =>
-  axios.post(`${API_BASE}/api/rides/request`, { pickup, dropoff, fare });
+export const fetchFare = (pickup, dropoff) =>
+  axios.post(`${API_BASE}/api/rides/fare`, { pickup, dropoff }, authHeaders());
+
+export const requestRide = (pickup, dropoff) =>
+  axios.post(`${API_BASE}/api/rides/request`, { pickup, dropoff }, authHeaders())
+    .then(r => r.data);
 
 export const fetchHistory = () =>
-  axios.get(`${API_BASE}/api/rides/history`);
+  axios.get(`${API_BASE}/api/rides/history`, authHeaders())
+    .then(r => r.data);
+
+export const fetchNearbyDrivers = () =>
+  axios.get(`${API_BASE}/api/drivers/nearby`, authHeaders())
+    .then(r => r.data);
+
+export const updateDriverLocation = (lng, lat) =>
+  axios.post(`${API_BASE}/api/drivers/location`, { lng, lat }, authHeaders());
 
 export const fetchPayments = () =>
-  axios.get(`${API_BASE}/api/payments`);
+  axios.get(`${API_BASE}/api/payments`, authHeaders()).then(r => r.data);
 
 export const fetchEarnings = () =>
-  axios.get(`${API_BASE}/api/driver/earnings`);
+  axios.get(`${API_BASE}/api/driver/earnings`, authHeaders()).then(r => r.data);
 
 export const initSocket = () => {
-  const socket = require('socket.io-client')(API_BASE);
-  return socket;}
+  const token = getToken();
+  return require('socket.io-client')(API_BASE, { query: { token } });
+};
