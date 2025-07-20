@@ -1,0 +1,7 @@
+body { margin:0; font-family:'Segoe UI',sans-serif; background:#f2f2f2; color:#333; }
+header { background:#0088cc; color:#fff; padding:10px; display:flex; align-items:center; gap:10px; }
+.logo { height:40px; }
+.container { padding:20px; max-width:800px; margin:auto; }
+nav button { margin-right:10px; }
+.map-container { height:300px; margin:20px 0; border:1px solid #ccc; border-radius:8px; }
+.chat-box { border:1px solid #0077aa; height:200px; overflow-y:auto; padding:10px; }
